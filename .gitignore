@@ -3,3 +3,6 @@
 
 # Portable Network Graphics
 *.png
+
+# Videos
+*.mp4

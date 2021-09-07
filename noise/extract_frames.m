@@ -3,7 +3,7 @@ pkg load video;
 pkg load image;
 
 % Cargar un video en un objeto
-VA = VideoReader('costarica_noise_g.mp4'); % Comando para cargar un video
+VA = VideoReader('costarica_original.mp4'); % Comando para cargar un video
 
 m = VA.Height; % Numero de filas de cada marco
 n = VA.Width; % Numero de columnas de cada marco
