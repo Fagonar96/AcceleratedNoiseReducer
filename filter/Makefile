@@ -1,14 +1,13 @@
-LDLIBS = -lpng -lm -fopenmp 
+LDLIBS = -lpng -lm -fopenmp
 
-PROGRAMS = variables filter
+PROGRAMS = filter filter-omp-cpu
 
 all: $(PROGRAMS)
 
-variables:
-	NVARCH=`uname -s`_`uname -m`; export NVARCH
-	NVCOMPILERS=/opt/nvidia/hpc_sdk; export NVCOMPILERS
-	MANPATH=$MANPATH:$NVCOMPILERS/$NVARCH/21.5/compilers/man; export MANPATH
-	PATH=$NVCOMPILERS/$NVARCH/21.5/compilers/bin:$PATH; export PATH
-	export PATH=$NVCOMPILERS/$NVARCH/21.5/comm_libs/mpi/bin:$PATH
-	export MANPATH=$MANPATH:$NVCOMPILERS/$NVARCH/21.5/comm_libs/mpi/man
-	export PATH=/usr/local/cuda-11.3/bin${PATH:+:${PATH}}
+filter: filter.c
+	nvc filter.c $(LDLIBS) -o filter
+	./filter ../video 16 4
+
+
+clean:
+	$(RM) *.o $(PROGRAMS) &> /dev/null || true
