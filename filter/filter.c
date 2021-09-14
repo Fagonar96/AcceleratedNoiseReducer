@@ -63,17 +63,17 @@ void filter(Image *input_image, Image *filtered_image, int window_size)
  * input_directory: directory path containing the input images.
  * file_amount: the amount of input images to be processed.
 */
-int process_files(const char *input_directory, int file_amount)
+int process_files(const char *input_directory, int file_amount, int batch_amount)
 {
     // Creates filtered frames folder if it doesnt exist
-    if (stat("../filtered", &st) == -1)
+    if (stat("../filtered_serial", &st) == -1)
     {
-        mkdir("../filtered", 0700);
+        mkdir("../filtered_serial", 0700);
     }
     
     // Set memory space for input frames
-    Image (*input_images)[PARALLEL_FILES_TO_LOAD] = malloc(sizeof(*input_images));
-    for (int i = 0; i < PARALLEL_FILES_TO_LOAD; i++)
+    Image (*input_images)[batch_amount] = malloc(sizeof(*input_images));
+    for (int i = 0; i < batch_amount; i++)
     {
         Image * imageptr;
         imageptr= &(*input_images)[i];
@@ -81,8 +81,8 @@ int process_files(const char *input_directory, int file_amount)
     }
 
     // Set memory space for output frames
-    Image (*filtered_images)[PARALLEL_FILES_TO_LOAD] = malloc(sizeof(*filtered_images));
-    for (int i = 0; i < PARALLEL_FILES_TO_LOAD; i++)
+    Image (*filtered_images)[batch_amount] = malloc(sizeof(*filtered_images));
+    for (int i = 0; i < batch_amount; i++)
     {
         Image * imageptr;
         imageptr= &(*filtered_images)[i];
@@ -92,14 +92,14 @@ int process_files(const char *input_directory, int file_amount)
     // Variable to store full execution time
     double full_time = 0;
 
-    int batches = file_amount/PARALLEL_FILES_TO_LOAD;
+    int batches = file_amount/batch_amount;
     for (int batches_c = 0; batches_c < batches; batches_c++)
     {
         // Load and read the batch of frames
         #pragma omp parallel for
-        for (int files_c = 0; files_c < PARALLEL_FILES_TO_LOAD; files_c++)
+        for (int files_c = 0; files_c < batch_amount; files_c++)
         {
-            int file_numer=files_c+batches_c*PARALLEL_FILES_TO_LOAD;
+            int file_numer=files_c+batches_c*batch_amount;
             char *filename;
             asprintf(&filename, "%s/frame%d.png", input_directory, file_numer);
             printf("filename: %s\n", filename);
@@ -110,7 +110,7 @@ int process_files(const char *input_directory, int file_amount)
         start_time = omp_get_wtime();
         
         // Process the batch of frames
-        for (int filter_c = 0; filter_c < PARALLEL_FILES_TO_LOAD; filter_c++)
+        for (int filter_c = 0; filter_c < batch_amount; filter_c++)
         {
             
             // Call the filter function
@@ -124,11 +124,11 @@ int process_files(const char *input_directory, int file_amount)
 
         // Save and write the batch of frames
         #pragma omp parallel for
-        for (int file_write_c = 0; file_write_c < PARALLEL_FILES_TO_LOAD; file_write_c++)
+        for (int file_write_c = 0; file_write_c < batch_amount; file_write_c++)
         {
-            int file_numer=file_write_c+batches_c*PARALLEL_FILES_TO_LOAD;
+            int file_numer=file_write_c+batches_c*batch_amount;
             char *filename;
-            asprintf(&filename, "../filtered/frame%d.png", file_numer);
+            asprintf(&filename, "../filtered_serial/frame%d.png", file_numer);
             write_image(filename, &(*filtered_images)[file_write_c]);
             printf("Frame %d guardado.\n", file_write_c);
         }
@@ -146,30 +146,35 @@ int process_files(const char *input_directory, int file_amount)
 // ./median_filter ../../frame 5
 int main(int argc, char *argv[])
 {
-    int i;
-    for (i = 0; i < argc; i++)
+    // Print the arguments received
+    for (int i = 0; i < argc; i++)
     {
         printf("argv[%d]: %s\n", i, argv[i]);
     }
-
-    if (argc != 3)
+    
+    // Check the number of arguments received
+    if (argc != 4)
     {
         printf("Error in arguments\n");
         return 1;
     }
 
+    // Obtain the arguments
     const char *input_directory_arg = argv[1];
-    const char *num_arg = argv[2];
-    int num = atol(num_arg);
+    const char *num_frames_arg = argv[2];
+    const char *num_batch_arg = argv[3];
 
-    printf("input_directory_arg: %s\n", input_directory_arg);
+    int num_frames = atol(num_frames_arg);
+    int num_batch = atol(num_batch_arg);
 
-    if (num%PARALLEL_FILES_TO_LOAD==0 & num!=0)
+    printf("Input directory: %s\n", input_directory_arg);
+
+    if (num_frames%num_batch == 0 & num_frames != 0)
     {
-        process_files(input_directory_arg, num);
+        process_files(input_directory_arg, num_frames, num_batch);
     }
     else{
-        printf("Number of files to process must be multiple of %d \n",PARALLEL_FILES_TO_LOAD);
+        printf("Number of files to process must be multiple of %d \n",num_batch);
     }
 
     return 0;
