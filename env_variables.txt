@@ -11,3 +11,6 @@ export PATH=$NVCOMPILERS/$NVARCH/21.5/comm_libs/mpi/bin:$PATH
 export MANPATH=$MANPATH:$NVCOMPILERS/$NVARCH/21.5/comm_libs/mpi/man
 
 export PATH=/usr/local/cuda-11.3/bin${PATH:+:${PATH}}
+
+
+https://meet.google.com/gqb-xsdb-qwh
