@@ -66,9 +66,9 @@ void filter(Image *input_image, Image *filtered_image, int window_size)
 int process_files(const char *input_directory, int file_amount, int batch_amount)
 {
     // Creates filtered frames folder if it doesnt exist
-    if (stat("../filtered_serial", &st) == -1)
+    if (stat("../filtered_omp_cpu", &st) == -1)
     {
-        mkdir("../filtered_serial", 0700);
+        mkdir("../filtered_omp_cpu", 0700);
     }
     
     // Set memory space for input frames
@@ -110,9 +110,9 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
         start_time = omp_get_wtime();
         
         // Process the batch of frames
+        #pragma omp parallel for
         for (int filter_c = 0; filter_c < batch_amount; filter_c++)
         {
-            
             // Call the filter function
             filter(&(*input_images)[filter_c],&(*filtered_images)[filter_c] , 1);
             printf("Frame %d procesado.\n", filter_c);
@@ -128,7 +128,7 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
         {
             int file_numer=file_write_c+batches_c*batch_amount;
             char *filename;
-            asprintf(&filename, "../filtered_serial/frame%d.png", file_numer);
+            asprintf(&filename, "../filtered_omp_cpu/frame%d.png", file_numer);
             write_image(filename, &(*filtered_images)[file_write_c]);
             printf("Frame %d guardado.\n", file_write_c);
         }
