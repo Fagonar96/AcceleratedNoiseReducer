@@ -96,7 +96,7 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     for (int batches_c = 0; batches_c < batches; batches_c++)
     {
         // Load and read the batch of frames
-        //#pragma omp parallel for
+        #pragma omp parallel for
         for (int files_c = 0; files_c < batch_amount; files_c++)
         {
             int file_numer=files_c+batches_c*batch_amount;
@@ -122,7 +122,7 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
         full_time += run_time;
 
         // Save and write the batch of frames
-        //#pragma omp parallel for
+        #pragma omp parallel for
         for (int file_write_c = 0; file_write_c < batch_amount; file_write_c++)
         {
             int file_numer=file_write_c+batches_c*batch_amount;
