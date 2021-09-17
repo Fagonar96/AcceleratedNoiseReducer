@@ -25,6 +25,7 @@ void filter(Image *input_image, Image *filtered_image, int window_size)
 {
 
     // Double loop to travel the frame matrix
+    #pragma omp parallel for collapse(2)
     for (int i = 1; i < IMAGE_M - 1; i++)
     {
         for (int j = 1; j < IMAGE_N - 1; j++)
