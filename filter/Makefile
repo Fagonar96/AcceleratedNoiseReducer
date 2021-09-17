@@ -1,6 +1,6 @@
 LDLIBS = -lpng -lm -fopenmp -w
 
-PROGRAMS = filter filter-omp-cpu filter-omp-fpga filter-oacc-cpu filter-oacc-fpga
+PROGRAMS = filter filter-omp-cpu filter-omp-gpu filter-omp-fpga filter-oacc-cpu filter-oacc-fpga
 
 all: $(PROGRAMS)
 
@@ -11,6 +11,10 @@ filter: filter.c
 filter-omp-cpu: filter_omp_cpu.c
 	nvc -mp=multicore filter_omp_cpu.c $(LDLIBS) -o filter-omp-cpu
 	./filter-omp-cpu ../video 16 4
+
+filter-omp-gpu: filter_omp_gpu.c
+	nvc -mp=gpu filter_omp_gpu.c $(LDLIBS) -o filter-omp-gpu
+	./filter-omp-gpu ../video 16 4
 
 filter-omp-fpga: filter_omp_cpu.c
 	gcc filter_omp_cpu.c $(LDLIBS) -o filter-omp-fpga
@@ -23,8 +27,6 @@ filter-oacc-cpu: filter_oacc_cpu.c
 filter-oacc-fpga: filter_oacc_cpu.c
 	gcc filter_oacc_cpu.c -lpng -lm -w -fopenacc -foffload=disable -o filter-oacc-fpga
 	./filter-oacc-fpga ../video 16 4
-
-
 
 clean:
 	$(RM) *.o $(PROGRAMS) &> /dev/null || true
