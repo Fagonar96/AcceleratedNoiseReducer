@@ -25,6 +25,7 @@ void filter(Image *input_image, Image *filtered_image, int window_size)
 {
 
     // Double loop to travel the frame matrix
+    #pragma acc parallel loop collapse(2)
     for (int i = 1; i < IMAGE_M - 1; i++)
     {
         for (int j = 1; j < IMAGE_N - 1; j++)
@@ -110,7 +111,8 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
         start_time = omp_get_wtime();
         
         // Process the batch of frames
-        #pragma acc parallel loop
+        //#pragma acc parallel loop
+        #pragma omp parallel for
         for (int filter_c = 0; filter_c < batch_amount; filter_c++)
         {
             // Call the filter function
