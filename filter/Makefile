@@ -1,6 +1,6 @@
 LDLIBS = -lpng -lm -fopenmp -w
 
-PROGRAMS = filter filter-omp-cpu filter-omp-gpu filter-omp-fpga filter-oacc-cpu filter-oacc-gpu filter-oacc-fpga
+PROGRAMS = filter filter-omp-cpu filter-omp-gpu filter-omp-fpga filter-oacc-cpu filter-oacc-gpu filter-cuda-gpu
 
 all: $(PROGRAMS)
 
@@ -32,5 +32,8 @@ filter-oacc-fpga: filter_oacc_cpu.c
 	gcc filter_oacc_cpu.c -lpng -lm -w -fopenacc -foffload=disable -o filter-oacc-fpga
 	./filter-oacc-fpga ../video 16 4
 
+filter-cuda-gpu: filter_cuda_gpu.cu
+	nvcc filter_cuda_gpu.cu -lpng -lm -o filter-cuda-gpu
+	cuda-memcheck ./filter-cuda-gpu ../video 16 4
 clean:
 	$(RM) *.o $(PROGRAMS) &> /dev/null || true
