@@ -6,21 +6,48 @@
 #include "handle_image_cuda.c"
 
 #define WINDOW_SIZE 1
-#define NEIGHBORHOOD_SIZE WINDOW_SIZE * 2 + 1
+#define NEIGHBORHOOD_SIZE ((WINDOW_SIZE * 2 + 1) * (WINDOW_SIZE * 2 + 1))
 struct stat st = {0};
 
 int image[IMAGE_M][IMAGE_N];
 int filte[IMAGE_M][IMAGE_N];
-int neigh[NEIGHBORHOOD_SIZE][NEIGHBORHOOD_SIZE];
 
 
 // CUDA Kernel definition
-__global__ void ImageFilter(int A[IMAGE_M][IMAGE_N], int B[IMAGE_M][IMAGE_N])
+__global__ void ImageFilter(int A[IMAGE_M][IMAGE_N], int B[IMAGE_M][IMAGE_N], int window_size)
 {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    int j = blockIdx.y * blockDim.y + threadIdx.y;
-    if (i < IMAGE_M && j < IMAGE_N)
-        B[i][j] = A[i][j];
+    int i = blockIdx.x * blockDim.x + threadIdx.x; // Column address
+    int j = blockIdx.y * blockDim.y + threadIdx.y; // Row address
+
+    if (i >= 1 && i < IMAGE_M - 1 && j >=1 && j < IMAGE_N - 1)
+    {   
+        /**
+        // Neighboirhood boundaries
+        int x_start = i - window_size;
+        int x_end = i + window_size;
+        int y_start = j - window_size;
+        int y_end = j + window_size;
+
+        // Initial value of filtered pixel
+        double temp = 0;
+
+        // Double loop to travel the temporary nieghborhood
+        for (int x = x_start; x <= x_end; x++)
+        {
+            for (int y = y_start; y <= y_end; y++)
+            {
+                // Average filter
+                int pixel = A[x][y];
+                temp = temp + pixel;
+            }
+        }
+        // Average filter
+        temp = round(temp/NEIGHBORHOOD_SIZE);
+        int result = (int) temp;
+        B[i][j] = result;
+        **/
+       B[i][j] = A[i][j];
+    }
 
 }
 
@@ -66,7 +93,7 @@ void filter(Image *input_image, Image *filtered_image, int window_size)
     dim3 threadsPerBlock(16, 16);
     dim3 numBlocks(m / threadsPerBlock.x, n / threadsPerBlock.y);
     //printf("numBlocks.x = %d, numBlocks.y = %d\n", numBlocks.x, numBlocks.y);
-    ImageFilter<<<numBlocks, threadsPerBlock>>>(pImage, pFilte);
+    ImageFilter<<<numBlocks, threadsPerBlock>>>(pImage, pFilte, window_size);
 
     // Copy result from device memory to host memory
     cudaMemcpy(filte, pFilte, (m*n)*sizeof(int), cudaMemcpyDeviceToHost);
@@ -110,6 +137,9 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     // Set memory space for output frames
     Image *filtered_images = (Image*) malloc(batch_amount * sizeof(*filtered_images));
 
+    // Variable to store full execution time
+    float full_time = 0;
+
     // Process the batch of frames
     int batches = file_amount/batch_amount;
     for (int batches_c = 0; batches_c < batches; batches_c++)
@@ -124,6 +154,12 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
             Image *image = read_image( &input_images[files_c],filename);
         }
 
+        float run_time;
+        cudaEvent_t start, end;
+        cudaEventCreate(&start);
+        cudaEventCreate(&end);
+        cudaEventRecord(start, 0);
+
         // Filter the batch of frames
         for (int filter_c = 0; filter_c < batch_amount; filter_c++)
         {
@@ -132,6 +168,14 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
             filter(&input_images[filter_c],&filtered_images[filter_c] , 1);
             printf("Frame %d filtered.\n", file_number);
         }
+
+        cudaEventRecord(end, 0);
+		cudaEventSynchronize(end);
+		cudaEventElapsedTime(&run_time, start, end);
+
+        full_time += run_time;
+
+
 
         // Save and write the batch of frames
         for (int file_write_c = 0; file_write_c < batch_amount; file_write_c++)
@@ -144,6 +188,9 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
         }
     }
 
+    printf("Execution time: %f\n", full_time/1000);
+
+    // Free up memory space
     free(filtered_images);
     free(input_images);
 
