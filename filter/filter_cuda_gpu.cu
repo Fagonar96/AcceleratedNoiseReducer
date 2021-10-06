@@ -21,6 +21,29 @@ __global__ void ImageFilter(int A[IMAGE_M][IMAGE_N], int B[IMAGE_M][IMAGE_N], in
 
     if (i >= 1 && i < IMAGE_M - 1 && j >=1 && j < IMAGE_N - 1)
     {   
+        // Initial value of filtered pixel
+        double temp = 0;
+
+        // First neighborhood row
+        temp += A[i-1][j-1];
+        temp += A[i][j-1];
+        temp += A[i+1][j-1];
+
+        // Second neighborhood row
+        temp += A[i-1][j];
+        temp += A[i][j];
+        temp += A[i+1][j];
+
+        // Third neighborhood row
+        temp += A[i-1][j+1];
+        temp += A[i][j+1];
+        temp += A[i+1][j+1];
+
+        // Average filter
+        temp = round(temp/NEIGHBORHOOD_SIZE);
+        int result = (int) temp;
+        B[i][j] = result;
+
         /**
         // Neighboirhood boundaries
         int x_start = i - window_size;
@@ -46,7 +69,7 @@ __global__ void ImageFilter(int A[IMAGE_M][IMAGE_N], int B[IMAGE_M][IMAGE_N], in
         int result = (int) temp;
         B[i][j] = result;
         **/
-       B[i][j] = A[i][j];
+       //B[i][j] = A[i][j];
     }
 
 }
@@ -93,7 +116,18 @@ void filter(Image *input_image, Image *filtered_image, int window_size)
     dim3 threadsPerBlock(16, 16);
     dim3 numBlocks(m / threadsPerBlock.x, n / threadsPerBlock.y);
     //printf("numBlocks.x = %d, numBlocks.y = %d\n", numBlocks.x, numBlocks.y);
+
+    float irun_time;
+    cudaEvent_t istart, iend;
+    cudaEventCreate(&istart);
+    cudaEventCreate(&iend);
+    cudaEventRecord(istart, 0);
     ImageFilter<<<numBlocks, threadsPerBlock>>>(pImage, pFilte, window_size);
+    cudaEventRecord(iend, 0);
+	cudaEventSynchronize(iend);
+	cudaEventElapsedTime(&irun_time, istart, iend);
+    printf("Frame time = %f\n", irun_time/1000);
+    
 
     // Copy result from device memory to host memory
     cudaMemcpy(filte, pFilte, (m*n)*sizeof(int), cudaMemcpyDeviceToHost);
