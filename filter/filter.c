@@ -7,7 +7,6 @@
 
 #define WINDOW_SIZE 1
 #define NEIGHBORHOOD_SIZE ((WINDOW_SIZE * 2 + 1) * (WINDOW_SIZE * 2 + 1))
-#define PARALLEL_FILES_TO_LOAD 1
 struct stat st = {0};
 
 
@@ -49,7 +48,7 @@ void filter(Image *input_image, Image *filtered_image, int window_size)
                 }
             }
             // Average filter
-            temp = round(temp/NEIGHBORHOOD_SIZE);
+            temp = round(temp / NEIGHBORHOOD_SIZE);
             int result = (int) temp;
             filtered_image->data[i][j] = result;
         }
@@ -70,24 +69,12 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     {
         mkdir("../filtered_serial", 0700);
     }
-    
+
     // Set memory space for input frames
-    Image (*input_images)[batch_amount] = malloc(sizeof(*input_images));
-    for (int i = 0; i < batch_amount; i++)
-    {
-        Image * imageptr;
-        imageptr= &(*input_images)[i];
-        RESET_IMAGE(  imageptr )
-    }
+    Image *input_images = (Image*) malloc(batch_amount * sizeof(*input_images));
 
     // Set memory space for output frames
-    Image (*filtered_images)[batch_amount] = malloc(sizeof(*filtered_images));
-    for (int i = 0; i < batch_amount; i++)
-    {
-        Image * imageptr;
-        imageptr= &(*filtered_images)[i];
-        RESET_IMAGE(imageptr)
-    }
+    Image *filtered_images = (Image*) malloc(batch_amount * sizeof(*filtered_images));
     
     // Variable to store full execution time
     double full_time = 0;
@@ -96,41 +83,40 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     for (int batches_c = 0; batches_c < batches; batches_c++)
     {
         // Load and read the batch of frames
-        #pragma omp parallel for
         for (int files_c = 0; files_c < batch_amount; files_c++)
         {
-            int file_numer=files_c+batches_c*batch_amount;
+            int file_number = files_c + batches_c * batch_amount;
             char *filename;
-            asprintf(&filename, "%s/frame%d.png", input_directory, file_numer);
-            printf("filename: %s\n", filename);
-            Image *image = read_image( &(*input_images)[files_c],filename);
+            asprintf(&filename, "%s/frame%d.png", input_directory, file_number);
+            printf("Frame with filename: %s read.\n", filename);
+            Image *image = read_image(&input_images[files_c], filename);
         }
 
-        double start_time, run_time;
-        start_time = omp_get_wtime();
+        double start_time, frame_time;
         
-        // Process the batch of frames
+        // Process and filter the batch of frames
         for (int filter_c = 0; filter_c < batch_amount; filter_c++)
-        {
-            
+        {   
+            int file_number = filter_c + batches_c * batch_amount;
+            // Start the frame execution time
+            start_time = omp_get_wtime();
             // Call the filter function
-            filter(&(*input_images)[filter_c],&(*filtered_images)[filter_c] , 1);
-            printf("Frame %d procesado.\n", filter_c);
+            filter(&input_images[filter_c], &filtered_images[filter_c], 1);
+            // Stop the frame execution time
+            frame_time = omp_get_wtime() - start_time;
+            // Add frame time to full time
+            full_time += frame_time;
+            printf("Frame %d filtered with a time of %fs\n", file_number, frame_time);
         }
-
-
-        run_time = omp_get_wtime() - start_time;
-        full_time += run_time;
 
         // Save and write the batch of frames
-        #pragma omp parallel for
         for (int file_write_c = 0; file_write_c < batch_amount; file_write_c++)
         {
-            int file_numer=file_write_c+batches_c*batch_amount;
+            int file_number=file_write_c+batches_c*batch_amount;
             char *filename;
-            asprintf(&filename, "../filtered_serial/frame%d.png", file_numer);
-            write_image(filename, &(*filtered_images)[file_write_c]);
-            printf("Frame %d guardado.\n", file_write_c);
+            asprintf(&filename, "../filtered_serial/frame%d.png", file_number);
+            write_image(filename, &filtered_images[file_write_c]);
+            printf("Frame %d saved.\n", file_number);
         }
     }
 
