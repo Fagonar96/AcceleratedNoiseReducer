@@ -43,33 +43,6 @@ __global__ void ImageFilter(int A[IMAGE_M][IMAGE_N], int B[IMAGE_M][IMAGE_N], in
         temp = round(temp/NEIGHBORHOOD_SIZE);
         int result = (int) temp;
         B[i][j] = result;
-
-        /**
-        // Neighboirhood boundaries
-        int x_start = i - window_size;
-        int x_end = i + window_size;
-        int y_start = j - window_size;
-        int y_end = j + window_size;
-
-        // Initial value of filtered pixel
-        double temp = 0;
-
-        // Double loop to travel the temporary nieghborhood
-        for (int x = x_start; x <= x_end; x++)
-        {
-            for (int y = y_start; y <= y_end; y++)
-            {
-                // Average filter
-                int pixel = A[x][y];
-                temp = temp + pixel;
-            }
-        }
-        // Average filter
-        temp = round(temp/NEIGHBORHOOD_SIZE);
-        int result = (int) temp;
-        B[i][j] = result;
-        **/
-       //B[i][j] = A[i][j];
     }
 
 }
@@ -84,7 +57,7 @@ __global__ void ImageFilter(int A[IMAGE_M][IMAGE_N], int B[IMAGE_M][IMAGE_N], in
  *              3 -> 7 x 7 window
  *              4 -> 9 x 9 window 
 */
-void filter(Image *input_image, Image *filtered_image, int window_size)
+void filter(Image *input_image, Image *filtered_image, int window_size) 
 {   
     const int m = IMAGE_M;
     const int n = IMAGE_N;
@@ -196,10 +169,10 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
 
         // Filter the batch of frames
         for (int filter_c = 0; filter_c < batch_amount; filter_c++)
-        {
-            int file_number=filter_c+batches_c*batch_amount;
+        {   
             // Call the filter function
-            filter(&input_images[filter_c],&filtered_images[filter_c] , 1);
+            int file_number=filter_c+batches_c*batch_amount;
+            filter(&input_images[filter_c], &filtered_images[filter_c], 1);
             printf("Frame %d filtered.\n", file_number);
         }
 
