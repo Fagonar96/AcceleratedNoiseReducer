@@ -7,7 +7,6 @@
 
 #define WINDOW_SIZE 1
 #define NEIGHBORHOOD_SIZE ((WINDOW_SIZE * 2 + 1) * (WINDOW_SIZE * 2 + 1))
-#define PARALLEL_FILES_TO_LOAD 1
 struct stat st = {0};
 
 
@@ -22,7 +21,8 @@ struct stat st = {0};
  *              4 -> 9 x 9 window 
 */
 void filter(Image *input_image, Image *filtered_image, int window_size)
-{
+{   
+    int count = 0;
 
     // Double loop to travel the frame matrix
     #pragma omp parallel for collapse(2)
@@ -30,6 +30,11 @@ void filter(Image *input_image, Image *filtered_image, int window_size)
     {
         for (int j = 1; j < IMAGE_N - 1; j++)
         {   
+
+            if (count <= 20)
+                printf("Value = %d\n", input_image->data[i][j]);
+            count++;
+
             // Neighboirhood boundaries
             int x_start = i - window_size;
             int x_end = i + window_size;
@@ -71,24 +76,13 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     {
         mkdir("../filtered_omp_cpu", 0700);
     }
-    
+
     // Set memory space for input frames
-    Image (*input_images)[batch_amount] = malloc(sizeof(*input_images));
-    for (int i = 0; i < batch_amount; i++)
-    {
-        Image * imageptr;
-        imageptr= &(*input_images)[i];
-        RESET_IMAGE(  imageptr )
-    }
+    Image *input_images = (Image*) malloc(batch_amount * sizeof(*input_images));
+    
 
     // Set memory space for output frames
-    Image (*filtered_images)[batch_amount] = malloc(sizeof(*filtered_images));
-    for (int i = 0; i < batch_amount; i++)
-    {
-        Image * imageptr;
-        imageptr= &(*filtered_images)[i];
-        RESET_IMAGE(imageptr)
-    }
+    Image *filtered_images = (Image*) malloc(batch_amount * sizeof(*filtered_images));
     
     // Variable to store full execution time
     double full_time = 0;
@@ -104,7 +98,7 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
             char *filename;
             asprintf(&filename, "%s/frame%d.png", input_directory, file_numer);
             printf("filename: %s\n", filename);
-            Image *image = read_image( &(*input_images)[files_c],filename);
+            Image *image = read_image(&input_images[files_c], filename);
         }
 
         double start_time, run_time;
@@ -115,7 +109,7 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
         for (int filter_c = 0; filter_c < batch_amount; filter_c++)
         {
             // Call the filter function
-            filter(&(*input_images)[filter_c],&(*filtered_images)[filter_c] , 1);
+            filter(&input_images[filter_c], &filtered_images[filter_c], 1);
             printf("Frame %d procesado.\n", filter_c);
         }
 
@@ -130,7 +124,7 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
             int file_numer=file_write_c+batches_c*batch_amount;
             char *filename;
             asprintf(&filename, "../filtered_omp_cpu/frame%d.png", file_numer);
-            write_image(filename, &(*filtered_images)[file_write_c]);
+            write_image(filename, &filtered_images[file_write_c]);
             printf("Frame %d guardado.\n", file_write_c);
         }
     }
