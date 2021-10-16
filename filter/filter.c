@@ -10,6 +10,38 @@
 struct stat st = {0};
 
 
+/**
+ * This function captures the output of a system command
+ * command: 
+*/
+double execute(const char *command)
+{   
+    char buffer[16];
+    int buffer_size = sizeof(buffer);
+
+    //printf("%s\n", command);
+
+    FILE *pipe = popen(command, "r");
+    if (pipe == NULL)
+    {
+        printf("Error popen failed!");
+        exit(1);
+    }
+    
+    fgets(buffer, 16, pipe);
+    char *ptr;
+
+    double result = strtod(buffer, &ptr);
+
+    //char *result = (char *) malloc(buffer_size+1);
+    //strcpy(result, buffer);    
+
+    pclose(pipe);
+    
+    return result;
+}
+
+
 /** 
  * This function applies the filter to an input image and returns a filtered image
  * input_image: struct with the data of the input image with noise
@@ -20,8 +52,14 @@ struct stat st = {0};
  *              3 -> 7 x 7 window
  *              4 -> 9 x 9 window 
 */
-void filter(Image *input_image, Image *filtered_image, int window_size)
+double filter(Image *input_image, Image *filtered_image, int window_size, int file_number, 
+            FILE *fptr_time, FILE *fptr_mem, FILE *fptr_cpu)
 {
+    // Variables to measure time
+    double start_time, frame_time;
+    // Start the frame execution time
+    start_time = omp_get_wtime();
+
 
     // Double loop to travel the frame matrix
     for (int i = 1; i < IMAGE_M - 1; i++)
@@ -53,6 +91,28 @@ void filter(Image *input_image, Image *filtered_image, int window_size)
             filtered_image->data[i][j] = result;
         }
     }
+
+    int pid = getpid();
+    //printf("Frame PID:%d\n", pid);
+
+    // Stop the frame execution time
+    frame_time = omp_get_wtime() - start_time;
+    // Write frame time to time file
+    fprintf(fptr_time, "Frame %d = %f s\n", file_number, frame_time);
+
+    char *mem_command;
+    asprintf(&mem_command, "ps -o rss= %d", pid);
+    double memory_usage = execute(mem_command) / 1024;
+    fprintf(fptr_mem, "Frame %d = %f MB\n", file_number, memory_usage);
+
+    char* cpu_command;
+    asprintf(&cpu_command, "ps -o pcpu= %d", pid);
+    double cpu_usage = execute(cpu_command);
+    if (cpu_usage >= 100)
+        cpu_usage = 100;
+    fprintf(fptr_cpu, "Frame %d = %.1f %\n", file_number, cpu_usage);
+
+    return frame_time;
 }
 
 
@@ -69,6 +129,10 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     {
         mkdir("../filtered_serial", 0700);
     }
+    // Remove measurement files if they exist
+    remove("../filtered_serial/time.txt");
+    remove("../filtered_serial/memory.txt");
+    remove("../filtered_serial/cpu.txt");
 
     // Set memory space for input frames
     Image *input_images = (Image*) malloc(batch_amount * sizeof(*input_images));
@@ -79,6 +143,18 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     // Variable to store full execution time
     double full_time = 0;
 
+    // File for runtime measurements
+    FILE *fptr_time = fopen("../filtered_serial/time.txt", "a");
+    fprintf(fptr_time,"Frame Filtering Runtime Measurements\n\n");
+
+    // File for memory usage measurements
+    FILE *fptr_mem = fopen("../filtered_serial/memory.txt", "a");
+    fprintf(fptr_mem,"Frame Filtering Memory Usage Measurements\n\n");
+
+    // File for cpu usage measurements
+    FILE *fptr_cpu = fopen("../filtered_serial/cpu.txt", "a");
+    fprintf(fptr_cpu,"Frame Filtering CPU Usage Measurements\n\n");
+
     int batches = file_amount/batch_amount;
     for (int batches_c = 0; batches_c < batches; batches_c++)
     {
@@ -88,25 +164,20 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
             int file_number = files_c + batches_c * batch_amount;
             char *filename;
             asprintf(&filename, "%s/frame%d.png", input_directory, file_number);
-            printf("Frame with filename: %s read.\n", filename);
+            printf("Frame %d loaded.\n", file_number);
             Image *image = read_image(&input_images[files_c], filename);
         }
-
-        double start_time, frame_time;
         
-        // Process and filter the batch of frames
+        // Filter and process the batch of frames
         for (int filter_c = 0; filter_c < batch_amount; filter_c++)
         {   
             int file_number = filter_c + batches_c * batch_amount;
-            // Start the frame execution time
-            start_time = omp_get_wtime();
             // Call the filter function
-            filter(&input_images[filter_c], &filtered_images[filter_c], 1);
-            // Stop the frame execution time
-            frame_time = omp_get_wtime() - start_time;
-            // Add frame time to full time
+            double frame_time = filter(&input_images[filter_c], &filtered_images[filter_c],
+                                       1, file_number, fptr_time, fptr_mem, fptr_cpu);
+            // Adds frame time to full time
             full_time += frame_time;
-            printf("Frame %d filtered with a time of %fs\n", file_number, frame_time);
+            printf("Frame %d filtered.\n", file_number);
         }
 
         // Save and write the batch of frames
@@ -120,7 +191,12 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
         }
     }
 
-    printf("Execution time: %f\n", full_time);
+    //printf("Execution time: %f\n", full_time);
+    fprintf(fptr_time,"\nTotal Runtime = %f s", full_time);
+
+    // Close the files
+    fclose(fptr_time);
+    fclose(fptr_mem);
 
     // Free up memory space
     free(filtered_images);
