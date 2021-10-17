@@ -1,6 +1,6 @@
 LDLIBS = -lpng -lm -fopenmp -w
 
-PROGRAMS = filter filter-omp-cpu filter-omp-gpu filter-omp-fpga filter-oacc-cpu filter-oacc-gpu filter-cuda-gpu
+PROGRAMS = filter filter-omp-cpu filter-omp-gpu filter-oacc-cpu filter-oacc-gpu filter-cuda-gpu
 
 all: $(PROGRAMS)
 
