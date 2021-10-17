@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <math.h>
@@ -7,9 +8,38 @@
 
 #define WINDOW_SIZE 1
 #define NEIGHBORHOOD_SIZE ((WINDOW_SIZE * 2 + 1) * (WINDOW_SIZE * 2 + 1))
-#define PARALLEL_FILES_TO_LOAD 1
 struct stat st = {0};
 
+/**
+ * This function captures the output of a system command
+ * command: 
+*/
+char* execute(const char *command)
+{   
+    char buffer[16];
+    int buffer_size = sizeof(buffer);
+
+    //printf("%s\n", command);
+
+    FILE *pipe = popen(command, "r");
+    if (pipe == NULL)
+    {
+        printf("Error popen failed!");
+        exit(1);
+    }
+    
+    fgets(buffer, 16, pipe);
+    
+    //char *ptr;
+    //double result = strtod(buffer, &ptr);
+
+    char *result = (char *) malloc(buffer_size+1);
+    strcpy(result, buffer);    
+
+    pclose(pipe);
+    
+    return result;
+}
 
 /** 
  * This function applies the filter to an input image and returns a filtered image
@@ -21,9 +51,15 @@ struct stat st = {0};
  *              3 -> 7 x 7 window
  *              4 -> 9 x 9 window 
 */
-void filter(Image *input_image, Image *filtered_image, int window_size)
+double filter(Image *input_image, Image *filtered_image, int window_size, int file_number,
+              FILE *fptr_time, FILE *fptr_mem, FILE *fptr_gpu, int mem_int) 
 {
     int runningOnGPU = 0;
+
+    // Variables to measure time
+    double start_time, frame_time;
+    // Start the frame execution time
+    start_time = omp_get_wtime();
 
 // Directive to target the GPU by copying from host the input image to the GPU and the filtered image from GPU to host
 #pragma omp target map(to:input_image->data[:IMAGE_M][:IMAGE_N]) map(tofrom:filtered_image->data[:IMAGE_M][:IMAGE_N]) map(from:runningOnGPU)
@@ -63,12 +99,31 @@ void filter(Image *input_image, Image *filtered_image, int window_size)
             filtered_image->data[i][j] = result;
         }
     }
-}
+}   
+
+    // Stop the frame execution time
+    frame_time = omp_get_wtime() - start_time;
+    // Write frame time to time file
+    fprintf(fptr_time, "Frame %d = %f s\n", file_number, frame_time);
+
+    char *mem_command = "nvidia-smi --query-gpu=memory.used --format=csv | tail -1";
+    char *mem_result = execute(mem_command);
+    int memory_usage = atoi(mem_result) - mem_int;
+    fprintf(fptr_mem, "Frame %d = %d MB\n", file_number, memory_usage);
+
+    char *gpu_command = "nvidia-smi --query-gpu=utilization.gpu --format=csv | tail -1";
+    char *gpu_usage = execute(gpu_command);
+    fprintf(fptr_gpu, "Frame %d = %s", file_number, gpu_usage);
+
+    /*
     // If still running on CPU, GPU must not be available
     if (runningOnGPU)
         printf("### Able to use the GPU! ### \n");
     else
         printf("### Unable to use the GPU, using CPU! ###\n");
+    */
+
+    return frame_time;
 }
 
 
@@ -85,24 +140,33 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     {
         mkdir("../filtered_omp_gpu", 0700);
     }
+
+    char *mem_command = "nvidia-smi --query-gpu=memory.used --format=csv | tail -1";
+    char *mem_result = execute(mem_command);
+    int mem_int = atoi(mem_result);
+
+    // Remove measurement files if they exist
+    remove("../filtered_omp_gpu/time.txt");
+    remove("../filtered_omp_gpu/memory.txt");
+    remove("../filtered_omp_gpu/gpu.txt");
+
+    // File for runtime measurements
+    FILE *fptr_time = fopen("../filtered_omp_gpu/time.txt", "a");
+    fprintf(fptr_time,"Frame Filtering Runtime Measurements\n\n");
+
+    // File for memory usage measurements
+    FILE *fptr_mem = fopen("../filtered_omp_gpu/memory.txt", "a");
+    fprintf(fptr_mem,"Frame Filtering Memory Usage Measurements\n\n");
+
+    // File for cpu usage measurements
+    FILE *fptr_gpu = fopen("../filtered_omp_gpu/gpu.txt", "a");
+    fprintf(fptr_gpu,"Frame Filtering GPU Usage Measurements\n\n");
     
     // Set memory space for input frames
-    Image (*input_images)[batch_amount] = malloc(sizeof(*input_images));
-    for (int i = 0; i < batch_amount; i++)
-    {
-        Image * imageptr;
-        imageptr= &(*input_images)[i];
-        RESET_IMAGE(  imageptr )
-    }
+    Image *input_images = (Image*) malloc(batch_amount * sizeof(*input_images));
 
     // Set memory space for output frames
-    Image (*filtered_images)[batch_amount] = malloc(sizeof(*filtered_images));
-    for (int i = 0; i < batch_amount; i++)
-    {
-        Image * imageptr;
-        imageptr= &(*filtered_images)[i];
-        RESET_IMAGE(imageptr)
-    }
+    Image *filtered_images = (Image*) malloc(batch_amount * sizeof(*filtered_images));
     
     // Variable to store full execution time
     double full_time = 0;
@@ -114,42 +178,45 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
         #pragma omp parallel for
         for (int files_c = 0; files_c < batch_amount; files_c++)
         {
-            int file_numer=files_c+batches_c*batch_amount;
+            int file_number = files_c + batches_c * batch_amount;
             char *filename;
-            asprintf(&filename, "%s/frame%d.png", input_directory, file_numer);
-            printf("filename: %s\n", filename);
-            Image *image = read_image( &(*input_images)[files_c],filename);
+            asprintf(&filename, "%s/frame%d.png", input_directory, file_number);
+            printf("Frame %d loaded.\n", file_number);
+            Image *image = read_image(&input_images[files_c], filename);
         }
-
-        double start_time, run_time;
-        start_time = omp_get_wtime();
         
-        // Process the batch of frames
-        #pragma omp parallel for
+        // Filter and process the batch of frames
+        //#pragma omp parallel for
         for (int filter_c = 0; filter_c < batch_amount; filter_c++)
         {
+            int file_number = filter_c + batches_c * batch_amount;
             // Call the filter function
-            filter(&(*input_images)[filter_c],&(*filtered_images)[filter_c] , 1);
-            printf("Frame %d procesado.\n", filter_c);
+            double frame_time = filter(&input_images[filter_c], &filtered_images[filter_c],
+                                       1, file_number, fptr_time, fptr_mem, fptr_gpu, mem_int);
+            // Adds frame time to full time
+            full_time += frame_time;
+            printf("Frame %d filtered.\n", file_number);
         }
-
-
-        run_time = omp_get_wtime() - start_time;
-        full_time += run_time;
 
         // Save and write the batch of frames
         #pragma omp parallel for
         for (int file_write_c = 0; file_write_c < batch_amount; file_write_c++)
         {
-            int file_numer=file_write_c+batches_c*batch_amount;
+            int file_number=file_write_c+batches_c*batch_amount;
             char *filename;
-            asprintf(&filename, "../filtered_omp_gpu/frame%d.png", file_numer);
-            write_image(filename, &(*filtered_images)[file_write_c]);
-            printf("Frame %d guardado.\n", file_write_c);
+            asprintf(&filename, "../filtered_omp_gpu/frame%d.png", file_number);
+            write_image(filename, &filtered_images[file_write_c]);
+            printf("Frame %d saved.\n", file_number);
         }
     }
 
-    printf("Execution time: %f\n", full_time);
+    //printf("Execution time: %f\n", full_time);
+    fprintf(fptr_time,"\nTotal Runtime = %f s", full_time);
+
+    // Close the files
+    fclose(fptr_time);
+    fclose(fptr_mem);
+    fclose(fptr_gpu);
 
     // Free up memory space
     free(filtered_images);
@@ -160,7 +227,7 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
 
 // ./median_filter ../../frame 5
 int main(int argc, char *argv[])
-{
+{   
     // Print the arguments received
     for (int i = 0; i < argc; i++)
     {
