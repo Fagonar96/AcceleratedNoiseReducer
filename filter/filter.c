@@ -198,6 +198,7 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     // Close the files
     fclose(fptr_time);
     fclose(fptr_mem);
+    fclose(fptr_cpu);
 
     // Free up memory space
     free(filtered_images);
