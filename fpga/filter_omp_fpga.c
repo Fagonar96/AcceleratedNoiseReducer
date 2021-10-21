@@ -10,19 +10,66 @@
 #define NEIGHBORHOOD_SIZE ((WINDOW_SIZE * 2 + 1) * (WINDOW_SIZE * 2 + 1))
 struct stat st = {0};
 
+/**
+ * This function captures the output of a system command and return 
+ * the output converted as a double.
+ * command: string of the command to be executed
+*/
+double execute(const char *command)
+{   
+    // Declare a buffer to store command output
+    char buffer[16]; int buffer_size = sizeof(buffer);
+
+    // Print the command to be executed
+    //printf("%s\n", command);
+
+    // Open a pipe for the command process
+    FILE *pipe = popen(command, "r");
+    if (pipe == NULL)
+    {
+        printf("Error popen failed!");
+        exit(1);
+    }
+    
+    // Get the command output from pipe
+    fgets(buffer, 16, pipe);
+    
+    // Convert command output to double
+    char *ptr; double result = strtod(buffer, &ptr);
+
+    // Convert the command output to string
+    //char *result = (char *) malloc(buffer_size+1);
+    //strcpy(result, buffer);    
+
+    // Close the pipe of the command process
+    pclose(pipe);
+    
+    // Return the command output
+    return result;
+}
+
 /** 
  * This function applies the filter to an input image and returns a filtered image
+ * and its frame filtering runtime.
  * input_image: struct with the data of the input image with noise
  * filtered_image: struct with data of the filtered image with reduced noise
  * window_size: size of the neighborhood window
  *              1 -> 3 x 3 window
  *              2 -> 5 x 5 window
  *              3 -> 7 x 7 window
- *              4 -> 9 x 9 window 
+ *              4 -> 9 x 9 window
+ * file_number: frame number
+ * fptr_time: file pointer to handle the measures of filter runtime
+ * fptr_mem: file pointer to handle the measures of filter memory usage
+ * fptr_cpu: file pointer to handle the measure of filter CPU usage
 */
-void filter(Image *input_image, Image *filtered_image, int window_size)
-{   
-    int count = 0;
+double filter(Image *input_image, Image *filtered_image, int window_size, 
+              int file_number, FILE *fptr_time, FILE *fptr_mem, FILE *fptr_cpu)
+{  
+    // Variables to measure time
+    double start_time, frame_time;
+    // Start the frame runtime
+    start_time = omp_get_wtime();
 
     // Double loop to travel the frame matrix
     #pragma omp parallel for collapse(2)
@@ -55,6 +102,33 @@ void filter(Image *input_image, Image *filtered_image, int window_size)
             filtered_image->data[i][j] = result;
         }
     }
+
+    // Get the process ID
+    int pid = getpid();
+    //printf("Frame PID:%d\n", pid);
+
+    // Stop the frame execution time
+    frame_time = omp_get_wtime() - start_time;
+    // Write frame time to time file
+    fprintf(fptr_time, "Frame %d = %f s\n", file_number, frame_time);
+
+    // Create the memory usage command with process ID
+    char *mem_command; asprintf(&mem_command, "ps -o rss= %d", pid);
+    // Run the command and get its memory usage output
+    double memory_usage = execute(mem_command) / 1024;
+    // Write the memory usage result to the memory file
+    fprintf(fptr_mem, "Frame %d = %f MB\n", file_number, memory_usage);
+
+    // Create the cpu utilization command with process ID
+    char* cpu_command; asprintf(&cpu_command, "ps -o pcpu= %d", pid);
+    // Run the command and get its cpu utilization output
+    double cpu_usage = execute(cpu_command);
+    if (cpu_usage >= 100 || cpu_usage == 0) cpu_usage = 100;
+    // Write the cpu utilization result to the cpu file
+    fprintf(fptr_cpu, "Frame %d = %.1f %\n", file_number, cpu_usage);
+
+    // Return the filter frame time
+    return frame_time;
 }
 
 
@@ -63,6 +137,7 @@ void filter(Image *input_image, Image *filtered_image, int window_size)
  * images and writes the filtered images.
  * input_directory: directory path containing the input images.
  * file_amount: the amount of input images to be processed.
+ * batch_amount: the amount of batches of input images.
 */
 int process_files(const char *input_directory, int file_amount, int batch_amount)
 {
@@ -71,6 +146,22 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     {
         mkdir("filtered_omp_fpga", 0700);
     }
+    // Remove measurement files if they exist
+    remove("filtered_omp_fpga/time.txt");
+    remove("filtered_omp_fpga/memory.txt");
+    remove("filtered_omp_fpga/cpu.txt");
+
+    // Open file for runtime measurements
+    FILE *fptr_time = fopen("filtered_omp_fpga/time.txt", "a");
+    fprintf(fptr_time,"Frame Filtering Runtime Measurements\n\n");
+
+    // Open file for memory usage measurements
+    FILE *fptr_mem = fopen("filtered_omp_fpga/memory.txt", "a");
+    fprintf(fptr_mem,"Frame Filtering Memory Usage Measurements\n\n");
+
+    // Open file for cpu usage measurements
+    FILE *fptr_cpu = fopen("filtered_omp_fpga/cpu.txt", "a");
+    fprintf(fptr_cpu,"Frame Filtering CPU Usage Measurements\n\n");
     
     // Set memory space for input frames
     Image *input_images = (Image*) malloc(batch_amount * sizeof(*input_images));
@@ -81,6 +172,7 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     // Variable to store full execution time
     double full_time = 0;
 
+    // Travel the amount of batches
     int batches = file_amount/batch_amount;
     for (int batches_c = 0; batches_c < batches; batches_c++)
     {
@@ -88,31 +180,25 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
         #pragma omp parallel for
         for (int files_c = 0; files_c < batch_amount; files_c++)
         {
-            int file_number=files_c+batches_c*batch_amount;
+            int file_number = files_c + batches_c * batch_amount;
             char *filename;
             asprintf(&filename, "%s/frame%d.png", input_directory, file_number);
-            printf("Frame with filename: %s read.\n", filename);
-            Image *image = read_image( &input_images[files_c],filename);
+            printf("Frame %d loaded.\n", file_number);
+            Image *image = read_image(&input_images[files_c], filename);
         }
 
-        // Start the execution time
-        double start_time, run_time;
-        start_time = omp_get_wtime();
-        
-        
-        // Process the batch of frames
-        #pragma omp parallel for
+        // Filter and process the batch of frames
+        //#pragma omp parallel for
         for (int filter_c = 0; filter_c < batch_amount; filter_c++)
-        {
-            // Call the filter function
+        {   
             int file_number = filter_c + batches_c * batch_amount;
-            filter(&input_images[filter_c], &filtered_images[filter_c], 1);
+            // Call the filter function
+            double frame_time = filter(&input_images[filter_c], &filtered_images[filter_c],
+                                       1, file_number, fptr_time, fptr_mem, fptr_cpu);
+            // Adds frame time to full time
+            full_time += frame_time;
             printf("Frame %d filtered.\n", file_number);
         }
-
-        // Stop the execution time
-        run_time = omp_get_wtime() - start_time;
-        full_time += run_time;
 
         // Save and write the batch of frames
         #pragma omp parallel for
@@ -120,14 +206,20 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
         {
             int file_number=file_write_c+batches_c*batch_amount;
             char *filename;
-            asprintf(&filename, "filtered_omp_fpga/frame%d.png", file_number);
-            write_image(filename, &input_images[file_write_c]);
+            asprintf(&filename, "../filtered_omp_cpu/frame%d.png", file_number);
+            write_image(filename, &filtered_images[file_write_c]);
             printf("Frame %d saved.\n", file_number);
         }
     }
 
-    // Print the execution time
-    printf("Execution time: %f\n", full_time);
+    // Write the full runtime of the process
+    fprintf(fptr_time,"\nTotal Runtime = %f s", full_time);
+    //printf("Execution time: %f\n", full_time);
+
+    // Close the files
+    fclose(fptr_time);
+    fclose(fptr_mem);
+    fclose(fptr_cpu);
 
     // Free up memory space
     free(filtered_images);
@@ -157,16 +249,20 @@ int main(int argc, char *argv[])
     const char *num_frames_arg = argv[2];
     const char *num_batch_arg = argv[3];
 
+    // Convert the number arguments into integers
     int num_frames = atol(num_frames_arg);
     int num_batch = atol(num_batch_arg);
 
+    // Print the input directory path
     printf("Input directory: %s\n", input_directory_arg);
 
+    // Validate that the number of batches is a multiple of the number of frames
     if (num_frames%num_batch == 0 & num_frames != 0)
     {
         process_files(input_directory_arg, num_frames, num_batch);
     }
-    else{
+    else
+    {
         printf("Number of files to process must be multiple of %d \n",num_batch);
     }
 

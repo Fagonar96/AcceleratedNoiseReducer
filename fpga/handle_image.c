@@ -26,7 +26,7 @@ Image * read_image(Image* image,char *filepath)
         exit(1);
     }
 
-    printf("Loaded image with a width of %dpx, a height of %dpx and %d channels\n", width, height, channels);
+    //printf("Loaded image with a width of %dpx, a height of %dpx and %d channels\n", width, height, channels);
 
     size_t img_size = width * height * channels;
 
