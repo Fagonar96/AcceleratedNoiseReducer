@@ -6,3 +6,6 @@
 
 # Videos
 *.mp4
+
+# Text files
+*.txt

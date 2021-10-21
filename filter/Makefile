@@ -25,7 +25,7 @@ filter-oacc-gpu: filter_oacc_gpu.c
 	./filter-oacc-gpu ../video 16 4
 
 filter-cuda-gpu: filter_cuda_gpu.cu
-	nvcc filter_cuda_gpu.cu -lpng -lm -o filter-cuda-gpu
+	nvcc filter_cuda_gpu.cu -lpng -lm -w -o filter-cuda-gpu
 	cuda-memcheck ./filter-cuda-gpu ../video 16 4
 clean:
 	$(RM) *.o $(PROGRAMS) &> /dev/null || true
