@@ -206,8 +206,8 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
         {
             int file_number=file_write_c+batches_c*batch_amount;
             char *filename;
-            asprintf(&filename, "../filtered_omp_cpu/frame%d.png", file_number);
-            write_image(filename, &filtered_images[file_write_c]);
+            asprintf(&filename, "filtered_omp_fpga/frame%d.png", file_number);
+            write_image(filename, &input_images[file_write_c]);
             printf("Frame %d saved.\n", file_number);
         }
     }
