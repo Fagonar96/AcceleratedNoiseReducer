@@ -146,6 +146,7 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     {
         mkdir("filtered_omp_fpga", 0700);
     }
+    system("chmod +rwx filtered_omp_fpga/");
     // Remove measurement files if they exist
     remove("filtered_omp_fpga/time.txt");
     remove("filtered_omp_fpga/memory.txt");
