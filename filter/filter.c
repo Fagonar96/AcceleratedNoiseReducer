@@ -60,16 +60,15 @@ double execute(const char *command)
  *              2 -> 5 x 5 window
  *              3 -> 7 x 7 window
  *              4 -> 9 x 9 window
- * file_number: frame number
- * fptr_time: file pointer to handle the measures of filter runtime
- * fptr_mem: file pointer to handle the measures of filter memory usage
- * fptr_cpu: file pointer to handle the measure of filter CPU usage
+ * frame_time: frame filtering run time
+ * memory_usage: frame filtering memory usage
+ * file_number: frame file number
 */
-double filter(Image *input_image, Image *filtered_image, int window_size, 
-              int file_number, FILE *fptr_time, FILE *fptr_mem, FILE *fptr_cpu)
+void filter(Image *input_image, Image *filtered_image, int window_size, 
+            double* frame_time, double* memory_usage, double* cpu_usage, int file_number)
 {
     // Variables to measure time
-    double start_time, frame_time;
+    double start_time;
     // Start the frame runtime
     start_time = omp_get_wtime();
 
@@ -101,6 +100,7 @@ double filter(Image *input_image, Image *filtered_image, int window_size,
             temp = round(temp / NEIGHBORHOOD_SIZE);
             int result = (int) temp;
             filtered_image->data[i][j] = result;
+            input_image->data[i][j] = result;
         }
     }
     // Get the process ID
@@ -108,27 +108,17 @@ double filter(Image *input_image, Image *filtered_image, int window_size,
     //printf("Frame PID:%d\n", pid);
 
     // Stop the frame execution time
-    frame_time = omp_get_wtime() - start_time;
-    // Write frame time to time file
-    fprintf(fptr_time, "Frame %d = %f s\n", file_number, frame_time);
+    *frame_time = omp_get_wtime() - start_time;
 
     // Create the memory usage command with process ID
     char *mem_command; asprintf(&mem_command, "ps -o rss= %d", pid);
     // Run the command and get its memory usage output
-    double memory_usage = execute(mem_command) / 1024;
-    // Write the memory usage result to the memory file
-    fprintf(fptr_mem, "Frame %d = %f MB\n", file_number, memory_usage);
+    *memory_usage = execute(mem_command) / 1024;
 
     // Create the cpu utilization command with process ID
     char* cpu_command; asprintf(&cpu_command, "ps -o pcpu= %d", pid);
     // Run the command and get its cpu utilization output
-    double cpu_usage = execute(cpu_command);
-    if (cpu_usage >= 100) cpu_usage = 100;
-    // Write the cpu utilization result to the cpu file
-    fprintf(fptr_cpu, "Frame %d = %.1f %\n", file_number, cpu_usage);
-
-    // Return the filter frame time
-    return frame_time;
+    *cpu_usage = execute(cpu_command);
 }
 
 
@@ -169,8 +159,10 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     // Set memory space for output frames
     Image *filtered_images = (Image*) malloc(batch_amount * sizeof(*filtered_images));
     
-    // Variable to store full execution time
+    // Variable for full runtime
     double full_time = 0;
+    // Variable for average memory usage
+    double full_memory = 0;
 
     // Travel the amount of batches
     int batches = file_amount/batch_amount;
@@ -186,15 +178,32 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
             Image *image = read_image(&input_images[files_c], filename);
         }
         
+        // Variables for frame time, memory usage and cpu utilization
+        double frame_time, frame_memory, frame_cpu;
+
         // Filter and process the batch of frames
         for (int filter_c = 0; filter_c < batch_amount; filter_c++)
         {   
+
+            // Variable for file number
             int file_number = filter_c + batches_c * batch_amount;
             // Call the filter function
-            double frame_time = filter(&input_images[filter_c], &filtered_images[filter_c],
-                                       1, file_number, fptr_time, fptr_mem, fptr_cpu);
+            filter(&input_images[filter_c], &filtered_images[filter_c], WINDOW_SIZE,
+                   &frame_time, &frame_memory, &frame_cpu, file_number);
+
+            // Write frame time to time file
+            fprintf(fptr_time, "Frame %d = %f s\n", file_number, frame_time);
+            // Write the memory usage result to the memory file
+            fprintf(fptr_mem, "Frame %d = %f MB\n", file_number, frame_memory);
+            // Write the cpu utilization result to the cpu file
+            if (frame_cpu >= 100 || frame_cpu == 0) frame_cpu = 100;
+            fprintf(fptr_cpu, "Frame %d = %.1f %\n", file_number, frame_cpu);
+
             // Adds frame time to full time
             full_time += frame_time;
+            // Adds memory_usage to full memory
+            full_memory += frame_memory;
+
             printf("Frame %d filtered.\n", file_number);
         }
 
@@ -212,6 +221,11 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     // Write the full runtime of the process
     fprintf(fptr_time,"\nTotal Runtime = %f s", full_time);
     //printf("Execution time: %f\n", full_time);
+
+    // Write the average memory usage of the process
+    full_memory = full_memory / file_amount;
+    fprintf(fptr_mem, "\nAverage Memory Usage = %f MB", full_memory);
+    //printf("Average memory usage: %f\n", full_memory);
 
     // Close the files
     fclose(fptr_time);

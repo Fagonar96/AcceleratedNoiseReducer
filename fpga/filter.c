@@ -1,50 +1,14 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <math.h>
 #include <omp.h>
-#include "handle_image_cuda.c"
+#include "handle_image.c"
 
 #define WINDOW_SIZE 1
 #define NEIGHBORHOOD_SIZE ((WINDOW_SIZE * 2 + 1) * (WINDOW_SIZE * 2 + 1))
 struct stat st = {0};
-
-// Frame matrix dimensions
-int image[IMAGE_M][IMAGE_N];
-int filte[IMAGE_M][IMAGE_N];
-
-// CUDA Kernel definition
-__global__ void ImageFilter(int A[IMAGE_M][IMAGE_N], int B[IMAGE_M][IMAGE_N], int window_size)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x; // Column address
-    int j = blockIdx.y * blockDim.y + threadIdx.y; // Row address
-
-    if (i >= 1 && i < IMAGE_M - 1 && j >=1 && j < IMAGE_N - 1)
-    {   
-        // Initial value of filtered pixel
-        double temp = 0;
-
-        // First neighborhood row
-        temp += A[i-1][j-1];
-        temp += A[i][j-1];
-        temp += A[i+1][j-1];
-
-        // Second neighborhood row
-        temp += A[i-1][j];
-        temp += A[i][j];
-        temp += A[i+1][j];
-
-        // Third neighborhood row
-        temp += A[i-1][j+1];
-        temp += A[i][j+1];
-        temp += A[i+1][j+1];
-
-        // Average filter
-        temp = round(temp/NEIGHBORHOOD_SIZE);
-        int result = (int) temp;
-        B[i][j] = result;
-    }
-}
 
 /**
  * This function captures the output of a system command and return 
@@ -52,7 +16,7 @@ __global__ void ImageFilter(int A[IMAGE_M][IMAGE_N], int B[IMAGE_M][IMAGE_N], in
  * command: string of the command to be executed
 */
 double execute(const char *command)
-{       
+{   
     // Declare a buffer to store command output
     char buffer[16]; int buffer_size = sizeof(buffer);
 
@@ -68,12 +32,12 @@ double execute(const char *command)
     }
     
     // Get the command output from pipe
-    fgets(buffer, buffer_size, pipe);
+    fgets(buffer, 16, pipe);
     
     // Convert command output to double
     char *ptr; double result = strtod(buffer, &ptr);
 
-    // Convert command output to string
+    // Convert the command output to string
     //char *result = (char *) malloc(buffer_size+1);
     //strcpy(result, buffer);    
 
@@ -83,6 +47,7 @@ double execute(const char *command)
     // Return the command output
     return result;
 }
+
 
 /** 
  * This function applies the filter to an input image and returns a filtered image
@@ -98,89 +63,61 @@ double execute(const char *command)
  * memory_usage: frame filtering memory usage
  * file_number: frame file number
 */
-void filter(Image *input_image, Image *filtered_image, int window_size, double mem_int,
-            double* frame_time, double* memory_usage, double* gpu_usage, int file_number)
+void filter(Image *input_image, Image *filtered_image, int window_size, 
+            double* frame_time, double* memory_usage, double* cpu_usage, int file_number)
 {
-    // Set memory space for the input and output images
-    const int m = IMAGE_M; const int n = IMAGE_N;
-    const int size = m * n * sizeof(int);
-    memset(image, 0, size);
-    memset(filte, 0, size);
+    // Variables to measure time
+    double start_time;
+    // Start the frame runtime
+    start_time = omp_get_wtime();
 
-    // Copy the input image data to the structure
-    //printf("Image = \n");
-    for (int i = 1; i < m - 1; i++)
+    // Double loop to travel the frame matrix
+    for (int i = 1; i < IMAGE_M - 1; i++)
     {
-        for (int j = 1; j < n - 1; j++)
+        for (int j = 1; j < IMAGE_N - 1; j++)
         {   
-            image[i][j] = input_image->data[i][j];
-            //printf("%d ", image[i][j]);
+            // Neighboirhood boundaries
+            int x_start = i - window_size;
+            int x_end = i + window_size;
+            int y_start = j - window_size;
+            int y_end = j + window_size;
+
+            // Initial value of filtered pixel
+            double temp = 0;
+
+            // Double loop to travel the temporary nieghborhood
+            for (int x = x_start; x <= x_end; x++)
+            {
+                for (int y = y_start; y <= y_end; y++)
+                {
+                    // Average filter
+                    int pixel = input_image->data[x][y];
+                    temp = temp + pixel;
+                }
+            }
+            // Average filter
+            temp = round(temp/NEIGHBORHOOD_SIZE);
+            int result = (int) temp;
+            filtered_image->data[i][j] = result;
         }
-        //printf("\n");
     }
 
-    // Allocate image matrix arrays in device memory
-    int (*pImage)[n], (*pFilte)[n];
-    cudaMalloc((void**)&pImage, size);
-    cudaMalloc((void**)&pFilte, size);
-
-    // Copy matrix arrays from host memory to device memory
-    cudaMemcpy(pImage, image, size, cudaMemcpyHostToDevice);
-    cudaMemcpy(pFilte, filte, size, cudaMemcpyHostToDevice);
-
-    // Define the number of block and threads per block of the device
-    dim3 threadsPerBlock(16, 16);
-    dim3 numBlocks(m / threadsPerBlock.x, n / threadsPerBlock.y);
-    //printf("numBlocks.x = %d, numBlocks.y = %d\n", numBlocks.x, numBlocks.y);
-
-    // Variables to measure time
-    float irun_time;
-    cudaEvent_t istart, iend;
-
-     // Start the frame execution time
-    cudaEventCreate(&istart);
-    cudaEventCreate(&iend);
-    cudaEventRecord(istart, 0);
-
-    // Call the kernel definition
-    ImageFilter<<<numBlocks, threadsPerBlock>>>(pImage, pFilte, window_size);
+    // Get the process ID
+    int pid = getpid();
+    //printf("Frame PID:%d\n", pid);
 
     // Stop the frame execution time
-    cudaEventRecord(iend, 0);
-	cudaEventSynchronize(iend);
-	cudaEventElapsedTime(&irun_time, istart, iend);
-    *frame_time = irun_time / 1000;
-    //printf("Frame time = %f\n", irun_time/1000);
+    *frame_time = omp_get_wtime() - start_time;
 
-    // Create the GPU memory usage query command
-    char *mem_command = "nvidia-smi --query-gpu=memory.used --format=csv | tail -1";
-    // Run the command and get its GPU memory usage output
-    double mem_result = execute(mem_command);
-    *memory_usage = mem_result - mem_int;
-    
-    // Create the GPU utilization query command
-    char *gpu_command = "nvidia-smi --query-gpu=utilization.gpu --format=csv | tail -1";
-    // Run the command and get its GPU utilization output
-    *gpu_usage = execute(gpu_command);
-    
-    // Copy result from device memory to host memory
-    cudaMemcpy(filte, pFilte, (m*n)*sizeof(int), cudaMemcpyDeviceToHost);
-    
-    // Copy the filtered data structure to the ouput image
-    //printf("Filtered = \n");
-    for (int i = 1; i < m - 1; i++)
-    {
-        for (int j = 1; j < n - 1; j++)
-        {   
-            filtered_image->data[i][j] = filte[i][j];
-            //printf("%d ", filtered_image->data[i][j]);
-        }
-        //printf("\n");
-    }
-    
-    // Free device memory
-    cudaFree(pImage);
-    cudaFree(pFilte);    
+    // Create the memory usage command with process ID
+    char *mem_command; asprintf(&mem_command, "ps -o rss= %d", pid);
+    // Run the command and get its memory usage output
+    *memory_usage = execute(mem_command) / 1024;
+
+    // Create the cpu utilization command with process ID
+    char* cpu_command; asprintf(&cpu_command, "ps -o pcpu= %d", pid);
+    // Run the command and get its cpu utilization output
+    *cpu_usage = execute(cpu_command);
 }
 
 
@@ -194,34 +131,31 @@ void filter(Image *input_image, Image *filtered_image, int window_size, double m
 int process_files(const char *input_directory, int file_amount, int batch_amount)
 {
     // Creates filtered frames folder if it doesnt exist
-    if (stat("../filtered_cuda_gpu", &st) == -1)
+    if (stat("filtered_omp_fpga", &st) == -1)
     {
-        mkdir("../filtered_cuda_gpu", 0700);
+        mkdir("filtered_omp_fpga", 0700);
     }
+    system("chmod +rwx filtered_omp_fpga/");
     // Remove measurement files if they exist
-    remove("../filtered_cuda_gpu/time.txt");
-    remove("../filtered_cuda_gpu/memory.txt");
-    remove("../filtered_cuda_gpu/gpu.txt");
+    remove("filtered_omp_fpga/time.txt");
+    remove("filtered_omp_fpga/memory.txt");
+    remove("filtered_omp_fpga/cpu.txt");
 
-    // File for runtime measurements
-    FILE *fptr_time = fopen("../filtered_cuda_gpu/time.txt", "a");
+    // Open file for runtime measurements
+    FILE *fptr_time = fopen("filtered_omp_fpga/time.txt", "a");
     fprintf(fptr_time,"Frame Filtering Runtime Measurements\n\n");
 
-    // File for memory usage measurements
-    FILE *fptr_mem = fopen("../filtered_cuda_gpu/memory.txt", "a");
-    fprintf(fptr_mem,"Frame Filtering GPU Memory Usage Measurements\n\n");
+    // Open file for memory usage measurements
+    FILE *fptr_mem = fopen("filtered_omp_fpga/memory.txt", "a");
+    fprintf(fptr_mem,"Frame Filtering Memory Usage Measurements\n\n");
 
-    // File for cpu usage measurements
-    FILE *fptr_gpu = fopen("../filtered_cuda_gpu/gpu.txt", "a");
-    fprintf(fptr_gpu,"Frame Filtering GPU Usage Measurements\n\n");
-
-    // Obtain GPU memory initial use
-    char *mem_command = "nvidia-smi --query-gpu=memory.used --format=csv | tail -1";
-    double mem_init = execute(mem_command);
+    // Open file for cpu usage measurements
+    FILE *fptr_cpu = fopen("filtered_omp_fpga/cpu.txt", "a");
+    fprintf(fptr_cpu,"Frame Filtering CPU Usage Measurements\n\n");
     
     // Set memory space for input frames
     Image *input_images = (Image*) malloc(batch_amount * sizeof(*input_images));
-    
+
     // Set memory space for output frames
     Image *filtered_images = (Image*) malloc(batch_amount * sizeof(*filtered_images));
 
@@ -230,11 +164,12 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     // Variable for average memory usage
     double full_memory = 0;
 
-    // Travel the batches of frames
+    // Travel the amount of batches
     int batches = file_amount/batch_amount;
     for (int batches_c = 0; batches_c < batches; batches_c++)
     {
         // Load and read the batch of frames
+        #pragma omp parallel for
         for (int files_c = 0; files_c < batch_amount; files_c++)
         {
             int file_number = files_c + batches_c * batch_amount;
@@ -245,23 +180,25 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
         }
 
         // Variables for frame time, memory usage and cpu utilization
-        double frame_time, frame_memory, frame_gpu;
+        double frame_time, frame_memory, frame_cpu;
 
-        // Filter the batch of frames
+        // Filter and process the batch of frames
+        //#pragma omp parallel for
         for (int filter_c = 0; filter_c < batch_amount; filter_c++)
-        {
+        {   
             // Variable for file number
             int file_number = filter_c + batches_c * batch_amount;
             // Call the filter function
             filter(&input_images[filter_c], &filtered_images[filter_c], WINDOW_SIZE,
-                   mem_init, &frame_time, &frame_memory, &frame_gpu, file_number);
+                   &frame_time, &frame_memory, &frame_cpu, file_number);
 
             // Write frame time to time file
             fprintf(fptr_time, "Frame %d = %f s\n", file_number, frame_time);
             // Write the memory usage result to the memory file
             fprintf(fptr_mem, "Frame %d = %f MB\n", file_number, frame_memory);
             // Write the cpu utilization result to the cpu file
-            fprintf(fptr_gpu, "Frame %d = %.1f %\n", file_number, frame_gpu);
+            if (frame_cpu >= 100 || frame_cpu == 0) frame_cpu = 100;
+            fprintf(fptr_cpu, "Frame %d = %.1f %\n", file_number, frame_cpu);
 
             // Adds frame time to full time
             full_time += frame_time;
@@ -271,14 +208,14 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
             printf("Frame %d filtered.\n", file_number);
         }
 
-
         // Save and write the batch of frames
+        #pragma omp parallel for
         for (int file_write_c = 0; file_write_c < batch_amount; file_write_c++)
         {
             int file_number=file_write_c+batches_c*batch_amount;
             char *filename;
-            asprintf(&filename, "../filtered_cuda_gpu/frame%d.png", file_number);
-            write_image(filename, &filtered_images[file_write_c]);
+            asprintf(&filename, "filtered_omp_fpga/frame%d.png", file_number);
+            write_image(filename, &input_images[file_write_c]);
             printf("Frame %d saved.\n", file_number);
         }
     }
@@ -295,7 +232,7 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     // Close the files
     fclose(fptr_time);
     fclose(fptr_mem);
-    fclose(fptr_gpu);
+    fclose(fptr_cpu);
 
     // Free up memory space
     free(filtered_images);
@@ -325,16 +262,20 @@ int main(int argc, char *argv[])
     const char *num_frames_arg = argv[2];
     const char *num_batch_arg = argv[3];
 
+    // Convert the number arguments into integers
     int num_frames = atol(num_frames_arg);
     int num_batch = atol(num_batch_arg);
 
+    // Print the input directory path
     printf("Input directory: %s\n", input_directory_arg);
 
+    // Validate that the number of batches is a multiple of the number of frames
     if (num_frames%num_batch == 0 & num_frames != 0)
     {
         process_files(input_directory_arg, num_frames, num_batch);
     }
-    else{
+    else
+    {
         printf("Number of files to process must be multiple of %d \n",num_batch);
     }
 

@@ -16,10 +16,10 @@ int filtered[IMAGE_M][IMAGE_N];
 
 /**
  * This function captures the output of a system command and return 
- * the output converted as a string.
+ * the output converted as a double.
  * command: string of the command to be executed
 */
-char* execute(const char *command)
+double execute(const char *command)
 {       
     // Declare a buffer to store command output
     char buffer[16]; int buffer_size = sizeof(buffer);
@@ -36,14 +36,14 @@ char* execute(const char *command)
     }
     
     // Get the command output from pipe
-    fgets(buffer, 16, pipe);
+    fgets(buffer, buffer_size, pipe);
     
     // Convert command output to double
-    //char *ptr; double result = strtod(buffer, &ptr);
+    char *ptr; double result = strtod(buffer, &ptr);
 
     // Convert command output to string
-    char *result = (char *) malloc(buffer_size+1);
-    strcpy(result, buffer);    
+    //char *result = (char *) malloc(buffer_size+1);
+    //strcpy(result, buffer);    
 
     // Close the pipe of the command process
     pclose(pipe);
@@ -62,13 +62,12 @@ char* execute(const char *command)
  *              2 -> 5 x 5 window
  *              3 -> 7 x 7 window
  *              4 -> 9 x 9 window
- * file_number: frame number
- * fptr_time: file pointer to handle the measures of filter runtime
- * fptr_mem: file pointer to handle the measures of filter memory usage
- * fptr_cpu: file pointer to handle the measure of filter CPU usage
+ * frame_time: frame filtering run time
+ * memory_usage: frame filtering memory usage
+ * file_number: frame file number
 */
-double filter(Image *input_image, Image *filtered_image, int window_size, int file_number,
-              FILE *fptr_time, FILE *fptr_mem, FILE *fptr_gpu, int mem_int) 
+void filter(Image *input_image, Image *filtered_image, int window_size, double mem_int,
+              double* frame_time, double* memory_usage, double* gpu_usage, int file_number)
 {
 
     // Set memory space for the input and output images
@@ -86,7 +85,7 @@ double filter(Image *input_image, Image *filtered_image, int window_size, int fi
     }
 
     // Variables to measure time
-    double start_time, frame_time;
+    double start_time;
     // Start the frame execution time
     start_time = omp_get_wtime();
 
@@ -127,24 +126,18 @@ double filter(Image *input_image, Image *filtered_image, int window_size, int fi
 }
 
     // Stop the frame execution time
-    frame_time = omp_get_wtime() - start_time;
-    // Write frame time to time file
-    fprintf(fptr_time, "Frame %d = %f s\n", file_number, frame_time);
+    *frame_time = omp_get_wtime() - start_time;
 
     // Create the GPU memory usage query command
     char *mem_command = "nvidia-smi --query-gpu=memory.used --format=csv | tail -1";
     // Run the command and get its GPU memory usage output
-    char *mem_result = execute(mem_command);
-    int memory_usage = atoi(mem_result) - mem_int;
-    // Write the GPU memory usage result to the memory file
-    fprintf(fptr_mem, "Frame %d = %d MB\n", file_number, memory_usage);
+    double mem_result = execute(mem_command);
+    *memory_usage = mem_result - mem_int;
 
     // Create the GPU utilization query command
     char *gpu_command = "nvidia-smi --query-gpu=utilization.gpu --format=csv | tail -1";
     // Run the command and get its GPU utilization output
-    char *gpu_usage = execute(gpu_command);
-    // Write the GPU utilization result to the GPU file
-    fprintf(fptr_gpu, "Frame %d = %s", file_number, gpu_usage);
+    *gpu_usage = execute(gpu_command);
 
     // Copy the filtered data structure to the ouput image
     for (int i = 1; i < m - 1; i++)
@@ -154,9 +147,6 @@ double filter(Image *input_image, Image *filtered_image, int window_size, int fi
             filtered_image->data[i][j] = filtered[i][j];
         } 
     }
-
-    // Return the filter frame time
-    return frame_time;
 }
 
 
@@ -181,8 +171,7 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
 
     // Obtain GPU memory initial use
     char *mem_command = "nvidia-smi --query-gpu=memory.used --format=csv | tail -1";
-    char *mem_result = execute(mem_command);
-    int mem_int = atoi(mem_result);
+    double mem_init = execute(mem_command);
 
     // File for runtime measurements
     FILE *fptr_time = fopen("../filtered_oacc_gpu/time.txt", "a");
@@ -202,8 +191,10 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     // Set memory space for output frames
     Image *filtered_images = (Image*) malloc(batch_amount * sizeof(*filtered_images));
     
-    // Variable to store full execution time
+    // Variable for full runtime
     double full_time = 0;
+    // Variable for average memory usage
+    double full_memory = 0;
 
     // Travel the amount of batches
     int batches = file_amount/batch_amount;
@@ -220,16 +211,31 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
             Image *image = read_image(&input_images[files_c], filename);
         }
 
+        // Variables for frame time, memory usage and cpu utilization
+        double frame_time, frame_memory, frame_gpu;
+
         // Filter and process the batch of frames
         //#pragma omp parallel for
         for (int filter_c = 0; filter_c < batch_amount; filter_c++)
         {
+            // Variable for file number
             int file_number = filter_c + batches_c * batch_amount;
             // Call the filter function
-            double frame_time = filter(&input_images[filter_c], &filtered_images[filter_c],
-                                       1, file_number, fptr_time, fptr_mem, fptr_gpu, mem_int);
+            filter(&input_images[filter_c], &filtered_images[filter_c], WINDOW_SIZE,
+                   mem_init, &frame_time, &frame_memory, &frame_gpu, file_number);
+
+            // Write frame time to time file
+            fprintf(fptr_time, "Frame %d = %f s\n", file_number, frame_time);
+            // Write the memory usage result to the memory file
+            fprintf(fptr_mem, "Frame %d = %f MB\n", file_number, frame_memory);
+            // Write the cpu utilization result to the cpu file
+            fprintf(fptr_gpu, "Frame %d = %.1f %\n", file_number, frame_gpu);
+
             // Adds frame time to full time
             full_time += frame_time;
+            // Adds memory_usage to full memory
+            full_memory += frame_memory;
+
             printf("Frame %d filtered.\n", file_number);
         }
 
@@ -248,6 +254,11 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     // Write the full runtime of the process
     fprintf(fptr_time,"\nTotal Runtime = %f s", full_time);
     //printf("Execution time: %f\n", full_time);
+
+    // Write the average memory usage of the process
+    full_memory = full_memory / file_amount;
+    fprintf(fptr_mem, "\nAverage Memory Usage = %f MB", full_memory);
+    //printf("Average memory usage: %f\n", full_memory);
 
     // Close the files
     fclose(fptr_time);

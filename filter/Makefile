@@ -21,7 +21,7 @@ filter-oacc-cpu: filter_oacc_cpu.c
 	./filter-oacc-cpu ../video 16 4
 
 filter-oacc-gpu: filter_oacc_gpu.c
-	nvc -acc filter_oacc_gpu.c $(LDLIBS) -o filter-oacc-gpu
+	nvc -acc filter_oacc_gpu.c -lpng -lm -fopenmp -o filter-oacc-gpu
 	./filter-oacc-gpu ../video 16 4
 
 filter-cuda-gpu: filter_cuda_gpu.cu
