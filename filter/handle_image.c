@@ -47,6 +47,7 @@ Image * read_image(Image* image,char *filepath)
     int width = png_get_image_width(png_ptr, info_ptr);   // Ancho
     int height = png_get_image_height(png_ptr, info_ptr); // Largo
     int channels = png_get_channels(png_ptr, info_ptr);   // Canales
+    //printf("Channels = %d\n", channels);
     int number_of_passes = png_set_interlace_handling(png_ptr);
     png_read_update_info(png_ptr, info_ptr);
 

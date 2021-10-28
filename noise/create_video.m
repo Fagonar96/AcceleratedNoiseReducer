@@ -5,7 +5,7 @@ pkg load image;
 fr = 1023; % Numero de fotogramas
 
 % Crear el nuevo video
-video_write = VideoWriter('costarica_restored.mp4');
+video_write = VideoWriter('restored.mp4');
 % Abrir el archivo del video nuevo
 open(video_write);
 
@@ -14,7 +14,7 @@ disp('Processing...');
 for k = 0:fr
   k
   % Leer el fotograma
-  fname = sprintf('filtered_omp_gpu/frame%d.png', k); % Nombre del archivo
+  fname = sprintf('filtered/frame%d.png', k); % Nombre del archivo
   frame = imread(fname);
   % Escribir cada fotograma del video
   writeVideo(video_write, frame);

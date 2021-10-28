@@ -164,6 +164,8 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     double full_time = 0;
     // Variable for average memory usage
     double full_memory = 0;
+    // Variable for average cpu usage
+    double full_cpu = 0;
 
     // Travel the amount of batches
     int batches = file_amount/batch_amount;
@@ -205,10 +207,13 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
             full_time += frame_time;
             // Adds memory_usage to full memory
             full_memory += frame_memory;
+            // Adds cpu usage to full cpu
+            full_cpu += frame_cpu;
 
             printf("Frame %d filtered.\n", file_number);
         }
 
+        /**
         // Save and write the batch of frames
         #pragma omp parallel for
         for (int file_write_c = 0; file_write_c < batch_amount; file_write_c++)
@@ -219,6 +224,7 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
             write_image(filename, &input_images[file_write_c]);
             printf("Frame %d saved.\n", file_number);
         }
+        **/
     }
 
     // Write the full runtime of the process
@@ -229,6 +235,10 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     full_memory = full_memory / file_amount;
     fprintf(fptr_mem, "\nAverage Memory Usage = %f MB", full_memory);
     //printf("Average memory usage: %f\n", full_memory);
+
+    // Write the average cpu utilization of the process
+    full_cpu = full_cpu / file_amount;
+    fprintf(fptr_cpu, "\nAverage CPU Utilization = %.1f %\n", full_cpu);
 
     // Close the files
     fclose(fptr_time);

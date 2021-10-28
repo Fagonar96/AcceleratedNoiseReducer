@@ -131,26 +131,26 @@ void filter(Image *input_image, Image *filtered_image, int window_size,
 int process_files(const char *input_directory, int file_amount, int batch_amount)
 {
     // Creates filtered frames folder if it doesnt exist
-    if (stat("filtered_omp_fpga", &st) == -1)
+    if (stat("filtered", &st) == -1)
     {
-        mkdir("filtered_omp_fpga", 0700);
+        mkdir("filtered", 0700);
     }
-    system("chmod +rwx filtered_omp_fpga/");
+    system("chmod +rwx filtered/");
     // Remove measurement files if they exist
-    remove("filtered_omp_fpga/time.txt");
-    remove("filtered_omp_fpga/memory.txt");
-    remove("filtered_omp_fpga/cpu.txt");
+    remove("filtered/time.txt");
+    remove("filtered/memory.txt");
+    remove("filtered/cpu.txt");
 
     // Open file for runtime measurements
-    FILE *fptr_time = fopen("filtered_omp_fpga/time.txt", "a");
+    FILE *fptr_time = fopen("filtered/time.txt", "a");
     fprintf(fptr_time,"Frame Filtering Runtime Measurements\n\n");
 
     // Open file for memory usage measurements
-    FILE *fptr_mem = fopen("filtered_omp_fpga/memory.txt", "a");
+    FILE *fptr_mem = fopen("filtered/memory.txt", "a");
     fprintf(fptr_mem,"Frame Filtering Memory Usage Measurements\n\n");
 
     // Open file for cpu usage measurements
-    FILE *fptr_cpu = fopen("filtered_omp_fpga/cpu.txt", "a");
+    FILE *fptr_cpu = fopen("filtered/cpu.txt", "a");
     fprintf(fptr_cpu,"Frame Filtering CPU Usage Measurements\n\n");
     
     // Set memory space for input frames
@@ -163,13 +163,15 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     double full_time = 0;
     // Variable for average memory usage
     double full_memory = 0;
+    // Variable for average cpu usage
+    double full_cpu = 0;
 
     // Travel the amount of batches
     int batches = file_amount/batch_amount;
     for (int batches_c = 0; batches_c < batches; batches_c++)
     {
         // Load and read the batch of frames
-        #pragma omp parallel for
+        //#pragma omp parallel for
         for (int files_c = 0; files_c < batch_amount; files_c++)
         {
             int file_number = files_c + batches_c * batch_amount;
@@ -204,20 +206,24 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
             full_time += frame_time;
             // Adds memory_usage to full memory
             full_memory += frame_memory;
+            // Adds cpu usage to full cpu
+            full_cpu += frame_cpu;
 
             printf("Frame %d filtered.\n", file_number);
         }
 
+        /**
         // Save and write the batch of frames
         #pragma omp parallel for
         for (int file_write_c = 0; file_write_c < batch_amount; file_write_c++)
         {
             int file_number=file_write_c+batches_c*batch_amount;
             char *filename;
-            asprintf(&filename, "filtered_omp_fpga/frame%d.png", file_number);
+            asprintf(&filename, "filtered/frame%d.png", file_number);
             write_image(filename, &input_images[file_write_c]);
             printf("Frame %d saved.\n", file_number);
         }
+        **/
     }
 
     // Write the full runtime of the process
@@ -228,6 +234,10 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     full_memory = full_memory / file_amount;
     fprintf(fptr_mem, "\nAverage Memory Usage = %f MB", full_memory);
     //printf("Average memory usage: %f\n", full_memory);
+
+    // Write the average cpu utilization of the process
+    full_cpu = full_cpu / file_amount;
+    fprintf(fptr_cpu, "\nAverage CPU Utilization = %.1f %\n", full_cpu);
 
     // Close the files
     fclose(fptr_time);

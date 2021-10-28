@@ -3,7 +3,7 @@ pkg load video;
 pkg load image;
 
 % Cargar un video en un objeto
-video_read = VideoReader('original_color.mp4'); % Comando para cargar un video
+video_read = VideoReader('source.mp4'); % Comando para cargar un video
 
 fr = 1024; % Numero de fotogramas
 %fr = video_read.NumberOfFrames; % Numero de fotogramas
@@ -15,7 +15,7 @@ m
 n
 
 % Crear el nuevo video
-video_write = VideoWriter('noise_color.mp4');
+video_write = VideoWriter('original.mp4');
 % Abrir el archivo del video nuevo
 open(video_write);
 
@@ -25,9 +25,9 @@ for k = 1:fr
   k
   % Leer el fotograma
   frame = readFrame(video_read);
-  %frame = frame(:,:,1);
+  frame = frame(:,:,1);
   % Agregar ruido al fotograma
-  frame = imnoise(frame,'gaussian',0.1);
+  %frame = imnoise(frame,'gaussian',0.1);
   % Escribir cada fotograma del video
   writeVideo(video_write, frame);
 end

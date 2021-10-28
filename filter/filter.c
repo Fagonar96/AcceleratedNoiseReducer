@@ -163,6 +163,8 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     double full_time = 0;
     // Variable for average memory usage
     double full_memory = 0;
+    // Variable for average cpu usage
+    double full_cpu = 0;
 
     // Travel the amount of batches
     int batches = file_amount/batch_amount;
@@ -184,7 +186,6 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
         // Filter and process the batch of frames
         for (int filter_c = 0; filter_c < batch_amount; filter_c++)
         {   
-
             // Variable for file number
             int file_number = filter_c + batches_c * batch_amount;
             // Call the filter function
@@ -203,6 +204,8 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
             full_time += frame_time;
             // Adds memory_usage to full memory
             full_memory += frame_memory;
+            // Adds cpu usage to full cpu
+            full_cpu += frame_cpu;
 
             printf("Frame %d filtered.\n", file_number);
         }
@@ -226,6 +229,10 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     full_memory = full_memory / file_amount;
     fprintf(fptr_mem, "\nAverage Memory Usage = %f MB", full_memory);
     //printf("Average memory usage: %f\n", full_memory);
+
+    // Write the average cpu utilization of the process
+    full_cpu = full_cpu / file_amount;
+    fprintf(fptr_cpu, "\nAverage CPU Utilization = %.1f %\n", full_cpu);
 
     // Close the files
     fclose(fptr_time);

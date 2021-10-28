@@ -229,6 +229,8 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     double full_time = 0;
     // Variable for average memory usage
     double full_memory = 0;
+    // Variable for average gpu utilization
+    double full_gpu = 0;
 
     // Travel the batches of frames
     int batches = file_amount/batch_amount;
@@ -267,6 +269,8 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
             full_time += frame_time;
             // Adds memory_usage to full memory
             full_memory += frame_memory;
+            // Adds gpu usage to full gpu
+            full_gpu += frame_gpu;
 
             printf("Frame %d filtered.\n", file_number);
         }
@@ -291,6 +295,10 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
     full_memory = full_memory / file_amount;
     fprintf(fptr_mem, "\nAverage Memory Usage = %f MB", full_memory);
     //printf("Average memory usage: %f\n", full_memory);
+
+    // Write the average gpu utilization of the process
+    full_gpu = full_gpu / file_amount;
+    fprintf(fptr_gpu, "\nAverage GPU Utilization = %.1f %\n", full_gpu);
 
     // Close the files
     fclose(fptr_time);
