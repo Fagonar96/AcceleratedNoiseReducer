@@ -70,6 +70,8 @@ void filter(Image *input_image, Image *filtered_image, int window_size,
     double start_time;
     // Start the frame runtime
     start_time = omp_get_wtime();
+    // Power variable
+    double power = 1.0 / NEIGHBORHOOD_SIZE;
 
     // Double loop to travel the frame matrix
     #pragma omp parallel for collapse(2)
@@ -91,13 +93,13 @@ void filter(Image *input_image, Image *filtered_image, int window_size,
             {
                 for (int y = y_start; y <= y_end; y++)
                 {
-                    // Average filter
+                    // Geometric average filter
                     int pixel = input_image->data[x][y];
-                    temp = temp + pixel;
+                    if(pixel != 0) temp = temp * pixel;
                 }
             }
-            // Average filter
-            temp = round(temp/NEIGHBORHOOD_SIZE);
+            // Geometric average filter
+            temp = round(pow(temp, power));
             int result = (int) temp;
             filtered_image->data[i][j] = result;
         }
@@ -213,7 +215,6 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
             printf("Frame %d filtered.\n", file_number);
         }
 
-        /**
         // Save and write the batch of frames
         #pragma omp parallel for
         for (int file_write_c = 0; file_write_c < batch_amount; file_write_c++)
@@ -224,21 +225,21 @@ int process_files(const char *input_directory, int file_amount, int batch_amount
             write_image(filename, &input_images[file_write_c]);
             printf("Frame %d saved.\n", file_number);
         }
-        **/
     }
 
     // Write the full runtime of the process
     fprintf(fptr_time,"\nTotal Runtime = %f s", full_time);
-    //printf("Execution time: %f\n", full_time);
+    printf("Execution time: %f\n", full_time);
 
     // Write the average memory usage of the process
     full_memory = full_memory / file_amount;
     fprintf(fptr_mem, "\nAverage Memory Usage = %f MB", full_memory);
-    //printf("Average memory usage: %f\n", full_memory);
+    printf("Average memory usage: %f\n", full_memory);
 
     // Write the average cpu utilization of the process
     full_cpu = full_cpu / file_amount;
     fprintf(fptr_cpu, "\nAverage CPU Utilization = %.1f %\n", full_cpu);
+    printf("Average CPU usage: %f\n", full_cpu);
 
     // Close the files
     fclose(fptr_time);

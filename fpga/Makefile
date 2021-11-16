@@ -7,7 +7,7 @@ all: $(PROGRAMS)
 
 filter: filter.c
 	gcc -std=c99 filter.c $(LDLIBS) -o filter
-	./filter ../video 32 2
+	./filter video 32 2
 
 filter-omp-fpga: filter_omp_fpga.c
 	gcc -std=c99 filter_omp_fpga.c $(LDLIBS) -o filter-omp-fpga

@@ -72,6 +72,8 @@ void filter(Image *input_image, Image *filtered_image, int window_size, double m
     double start_time;
     // Start the frame execution time
     start_time = omp_get_wtime();
+    // Power variable
+    double power = 1.0 / NEIGHBORHOOD_SIZE;
 
 // Directive to target the GPU by copying from host the input image to the GPU and the filtered image from GPU to host
 #pragma omp target map(to:input_image->data[:IMAGE_M][:IMAGE_N]) map(tofrom:filtered_image->data[:IMAGE_M][:IMAGE_N]) map(from:runningOnGPU)
@@ -93,20 +95,20 @@ void filter(Image *input_image, Image *filtered_image, int window_size, double m
             int y_end = j + window_size;
 
             // Initial value of filtered pixel
-            double temp = 0;
+            double temp = 1;
 
             // Double loop to travel the temporary nieghborhood
             for (int x = x_start; x <= x_end; x++)
             {
                 for (int y = y_start; y <= y_end; y++)
                 {
-                    // Average filter
+                    // Geometric average filter
                     int pixel = input_image->data[x][y];
-                    temp = temp + pixel;
+                    if(pixel != 0) temp = temp * pixel;
                 }
             }
-            // Average filter
-            temp = round(temp/NEIGHBORHOOD_SIZE);
+            // Geometric average filter
+            temp = round(pow(temp, power));
             int result = (int) temp;
             filtered_image->data[i][j] = result;
             input_image->data[i][j] = result;

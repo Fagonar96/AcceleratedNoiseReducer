@@ -22,25 +22,27 @@ __global__ void ImageFilter(int A[IMAGE_M][IMAGE_N], int B[IMAGE_M][IMAGE_N], in
     if (i >= 1 && i < IMAGE_M - 1 && j >=1 && j < IMAGE_N - 1)
     {   
         // Initial value of filtered pixel
-        double temp = 0;
+        double temp = 1;
+        // Power variable
+        double power = 1.0 / NEIGHBORHOOD_SIZE;
 
         // First neighborhood row
-        temp += A[i-1][j-1];
-        temp += A[i][j-1];
-        temp += A[i+1][j-1];
+        temp *= A[i-1][j-1];
+        temp *= A[i][j-1];
+        temp *= A[i+1][j-1];
 
         // Second neighborhood row
-        temp += A[i-1][j];
-        temp += A[i][j];
-        temp += A[i+1][j];
+        temp *= A[i-1][j];
+        temp *= A[i][j];
+        temp *= A[i+1][j];
 
         // Third neighborhood row
-        temp += A[i-1][j+1];
-        temp += A[i][j+1];
-        temp += A[i+1][j+1];
+        temp *= A[i-1][j+1];
+        temp *= A[i][j+1];
+        temp *= A[i+1][j+1];
 
         // Average filter
-        temp = round(temp/NEIGHBORHOOD_SIZE);
+        temp = round(pow(temp, power));
         int result = (int) temp;
         B[i][j] = result;
     }

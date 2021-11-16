@@ -105,22 +105,23 @@ void filter(Image *input_image, Image *filtered_image, int window_size, double m
             int y_end = j + window_size;
 
             // Initial value of filtered pixel
-            double temp = 0;
+            double temp = 1;
 
             // Double loop to travel the temporary nieghborhood
             for (int x = x_start; x <= x_end; x++)
             {
                 for (int y = y_start; y <= y_end; y++)
                 {
-                    // Average filter
-                    int pixel = image[x][y];
-                    temp = temp + pixel;
+                    // Geometric average filter
+                    int pixel = input_image->data[x][y];
+                    if(pixel != 0) temp = temp * pixel;
                 }
             }
-            // Average filter
-            temp = round(temp/NEIGHBORHOOD_SIZE);
+            // Geometric average filter
+            temp = round(pow(temp, 1.0/9.0));
             int result = (int) temp;
-            filtered[i][j] = result;
+            filtered_image->data[i][j] = result;
+            input_image->data[i][j] = result;
         }
     }
 }

@@ -71,6 +71,8 @@ void filter(Image *input_image, Image *filtered_image, int window_size,
     double start_time;
     // Start the frame runtime
     start_time = omp_get_wtime();
+    // Power variable
+    double power = 1.0 / NEIGHBORHOOD_SIZE;
 
     // Double loop to travel the frame matrix
     for (int i = 1; i < IMAGE_M - 1; i++)
@@ -84,20 +86,20 @@ void filter(Image *input_image, Image *filtered_image, int window_size,
             int y_end = j + window_size;
 
             // Initial value of filtered pixel
-            double temp = 0;
+            double temp = 1;
 
             // Double loop to travel the temporary nieghborhood
             for (int x = x_start; x <= x_end; x++)
             {
                 for (int y = y_start; y <= y_end; y++)
                 {
-                    // Average filter
+                    // Geometric average filter
                     int pixel = input_image->data[x][y];
-                    temp = temp + pixel;
+                    if(pixel != 0) temp = temp * pixel;
                 }
             }
-            // Average filter
-            temp = round(temp / NEIGHBORHOOD_SIZE);
+            // Geometric average filter
+            temp = round(pow(temp, power));
             int result = (int) temp;
             filtered_image->data[i][j] = result;
             input_image->data[i][j] = result;
